@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Pixel Tactics 1x8</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html, body {
+    width:100%; height:100%; background:#0a0a12; overflow:hidden;
+    font-family: 'Courier New', monospace; color:#e8e8f0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  /* Contenedor 16:9 que se adapta a la pantalla */
+  #game-wrap {
+    position:relative;
+    width:100vw; height:56.25vw;
+    max-width:177.78vh; max-height:100vh;
+    background:#111122;
+    overflow:hidden;
+    image-rendering: pixelated;
+  }
+  /* Rotar si el móvil está vertical */
+  @media (orientation: portrait) {
+    #rotate-msg {
+      position:fixed; inset:0; background:#0a0a12; z-index:9999;
+      display:flex; align-items:center; justify-content:center;
+      flex-direction:column; gap:20px; text-align:center; padding:20px;
+    }
+    #rotate-msg.hidden { display:none; }
+    #game-wrap { display:none; }
+  }
+  @media (orientation: landscape) {
+    #rotate-msg { display:none !important; }
+  }
+
+  canvas#screen {
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    touch-action: none;
+  }
+
+  /* HUD superpuesto */
+  #hud {
+    position:absolute; inset:0;
+    pointer-events:none;
+    display:flex; flex-direction:column; justify-content:space-between;
+    padding: 1.5% 2%;
+  }
+  #hud-top {
+    display:flex; justify-content:space-between; align-items:flex-start;
+    font-size: 1.8vmin;
+    text-shadow: 0 0 4px #000, 2px 2px 0 #000;
+  }
+  #turn-info {
+    background: rgba(0,0,0,0.55);
+    padding: 0.6em 1em;
+    border: 2px solid #4444aa;
+    box-shadow: 2px 2px 0 #000;
+  }
+  #hud-bottom {
+    display:flex; gap:1vmin;
+    pointer-events:auto;
+    justify-content:center;
+    flex-wrap:wrap;
+  }
+  .btn {
+    background: linear-gradient(#3a3a6a, #1a1a3a);
+    color:#fff; border:2px solid #8888dd;
+    padding: 1.2vmin 2vmin;
+    font-family:inherit; font-weight:bold;
+    font-size: 2vmin;
+    cursor:pointer;
+    box-shadow: 3px 3px 0 #000;
+    text-transform:uppercase;
+    min-width: 14vmin;
+    letter-spacing: 0.5px;
+  }
+  .btn:active { transform:translate(2px,2px); box-shadow:1px 1px 0 #000; }
+  .btn:disabled { opacity:0.35; filter:grayscale(1); }
+  .btn.danger { background: linear-gradient(#6a2a2a, #3a1a1a); border-color:#dd8888; }
+  .btn.gold { background: linear-gradient(#6a5a2a, #3a2a1a); border-color:#ddcc88; }
+  .btn.mana { background: linear-gradient(#2a3a6a, #1a1a3a); border-color:#88aadd; }
+
+  #log {
+    position:absolute;
+    left:2%; bottom: 12%;
+    max-width: 55%;
+    font-size: 1.6vmin;
+    color:#ffffcc;
+    text-shadow: 2px 2px 0 #000;
+    pointer-events:none;
+    line-height:1.3;
+  }
+  #log div { margin:2px 0; opacity:0.9; }
+
+  /* Menú de acción contextual (submenu de habilidades/items) */
+  #submenu {
+    position:absolute; inset:0;
+    display:none;
+    background: rgba(0,0,0,0.7);
+    z-index:50;
+    pointer-events:auto;
+    padding: 3vmin;
+    flex-direction:column;
+    gap: 1.5vmin;
+    overflow-y:auto;
+  }
+  #submenu.active { display:flex; }
+  #submenu h3 {
+    color:#ffcc66; font-size: 2.5vmin; text-align:center;
+    border-bottom: 2px solid #5555aa; padding-bottom:1vmin;
+  }
+  #submenu .list { display:flex; flex-direction:column; gap:1vmin; }
+  #submenu .btn { min-width:auto; font-size:1.9vmin; text-align:left; }
+
+  #end-screen {
+    position:absolute; inset:0; display:none;
+    background:rgba(0,0,0,0.85); z-index:100;
+    flex-direction:column; align-items:center; justify-content:center;
+    pointer-events:auto; gap: 3vmin;
+  }
+  #end-screen.active { display:flex; }
+  #end-screen h1 { font-size: 6vmin; color:#ffcc66; text-shadow: 3px 3px 0 #000; }
+  #end-screen p { font-size: 2.5vmin; }
+
+  #rotate-msg h1 { color:#ffcc66; font-size:6vw; }
+  #rotate-msg p { font-size:4vw; color:#aaa; }
+  #rotate-msg .icon { font-size:15vw; }
+</style>
+</head>
+<body>
+
+<div id="rotate-msg">
+  <div class="icon">📱↻</div>
+  <h1>Gira tu teléfono</h1>
+  <p>Este juego se juega en horizontal (16:9)</p>
+</div>
+
+<div id="game-wrap">
+  <canvas id="screen"></canvas>
+
+  <div id="hud">
+    <div id="hud-top">
+      <div id="turn-info">Turno: —</div>
+      <div id="team-info" style="text-align:right;">—</div>
+    </div>
+    <div id="hud-bottom"></div>
+  </div>
+
+  <div id="log"></div>
+
+  <div id="submenu">
+    <h3 id="submenu-title">Elige</h3>
+    <div class="list" id="submenu-list"></div>
+    <button class="btn danger" onclick="cerrarSubmenu()">✕ Cancelar</button>
+  </div>
+
+  <div id="end-screen">
+    <h1 id="end-title">¡Victoria!</h1>
+    <p id="end-msg"></p>
+    <button class="btn gold" onclick="location.reload()">↻ Jugar de nuevo</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  CONSTANTES Y ESTADO
+// ============================================================
+const W = 320, H = 180;          // resolución interna pixel art
+const CELLS = 8;
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+canvas.width = W; canvas.height = H;
+ctx.imageSmoothingEnabled = false;
+
+// Colores pixel art
+const PAL = {
+  bg1: '#1a1a2e', bg2: '#0f0f1e',
+  floor1: '#3a3a5c', floor2: '#2a2a44',
+  border: '#5a5a8a',
+  ally: '#4a8aff', allyDark: '#2a5acf',
+  enemy: '#ff4a4a', enemyDark: '#cf2a2a',
+  hp: '#4aff4a', hpLow: '#ff4a4a',
+  mp: '#4a8aff',
+  sel: '#ffff66', selPulse: '#ffcc33',
+  text: '#ffffff', shadow: '#000000',
+  gold: '#ffcc44',
+};
+
+let estado = null;
+let anims = [];   // animaciones activas
+let seleccion = null; // personaje seleccionado
+let modoAccion = null; // 'mover' | 'atacar' | 'habilidad' | 'item'
+let modoAccionData = null;
+let hoverCell = -1;
+
+// ============================================================
+//  DATOS DE PERSONAJES
+// ============================================================
+const SPRITES = {
+  // Sprites 16x16 pixel art definidos por matrices de color
+  guerrero: {
+    color: '#c03030', outline:'#600000', skin:'#e0a878',
+    // Y dibujamos programáticamente con primitivas
+    tipo: 'guerrero'
+  },
+  arquero: {
+    color: '#30a030', outline:'#003000', skin:'#e0a878',
+    tipo: 'arquero'
+  },
+  ladron: {
+    color: '#6060c0', outline:'#202060', skin:'#e0a878',
+    tipo: 'ladron'
+  }
+};
+
+function crearPersonaje(tipo, equipo, pos) {
+  const base = {
+    guerrero: { nombre:'Guerrero', hp_max:45, mp_max:10, atk:8, velocidad:5, rango:1, sprite:'guerrero' },
+    arquero:  { nombre:'Arquero',  hp_max:32, mp_max:14, atk:6, velocidad:7, rango:3, sprite:'arquero' },
+    ladron:   { nombre:'Ladrón',   hp_max:28, mp_max:12, atk:7, velocidad:9, rango:1, sprite:'ladron' },
+  }[tipo];
+  return {
+    ...base, tipo, equipo, pos,
+    hp: base.hp_max, mp: base.mp_max,
+    vivo: true,
+    habilidades: {
+      guerrero: [
+        { nombre:'Golpe Brutal', coste:4, poder:14, tipo:'melee', rango:1, desc:'Daño x2' },
+        { nombre:'Grito de Guerra', coste:5, poder:0, tipo:'buff', desc:'+3 ATK este turno' }
+      ],
+      arquero: [
+        { nombre:'Flecha Perforante', coste:5, poder:12, tipo:'ranged', rango:6, desc:'Ignora esquiva' },
+        { nombre:'Lluvia de Flechas', coste:7, poder:8, tipo:'ranged_aoe', rango:5, desc:'Golpea 2 casillas' }
+      ],
+      ladron: [
+        { nombre:'Apuñalar', coste:3, poder:11, tipo:'melee', rango:1, desc:'Alta probabilidad de crítico' },
+        { nombre:'Sombra', coste:6, poder:0, tipo:'buff', desc:'+2 velocidad, evasión' }
+      ]
+    }[tipo],
+    items: equipo === 0 ? [{nombre:'Poción',tipo:'curacion',valor:15,usos:1}] : []
+  };
+}
+
+// ============================================================
+//  INICIALIZAR PARTIDA
+// ============================================================
+function nuevaPartida() {
+  const enemigosTipo = ['guerrero','arquero','ladron'];
+  estado = {
+    tablero: new Array(CELLS).fill(null),
+    personajes: [],
+    turno: 0,
+    ronda: 1,
+    usados: [],
+    aliados: [],
+    enemigos: [],
+    log: []
+  };
+  // Aliados (equipo 0): izquierda
+  const aliados = [crearPersonaje('guerrero',0,0), crearPersonaje('arquero',0,1), crearPersonaje('ladron',0,2)];
+  // Enemigos (equipo 1): derecha - 3 enemigos aleatorios
+  const shuffled = [...enemigosTipo].sort(()=>Math.random()-0.5);
+  const enemigos = shuffled.map((t,i)=>crearPersonaje(t,1,7-i));
+
+  estado.aliados = aliados;
+  estado.enemigos = enemigos;
+  estado.personajes = [...aliados, ...enemigos];
+  for (const p of estado.personajes) estado.tablero[p.pos] = p;
+
+  log('⚔ ¡Comienza la batalla!');
+  log('Equipo Azul vs Equipo Rojo');
+  iniciarRonda();
+}
+
+function iniciarRonda() {
+  estado.usados = [];
+  log(`— Ronda ${estado.ronda} —`);
+  siguienteTurno();
+}
+
+// ============================================================
+//  SISTEMA DE TURNOS
+// ============================================================
+function ordenPorVelocidad() {
+  return estado.personajes
+    .filter(p => p.vivo)
+    .sort((a,b) => b.velocidad - a.velocidad || a.pos - b.pos);
+}
+
+function siguienteTurno() {
+  const orden = ordenPorVelocidad();
+  const pendientes = orden.filter(p => !estado.usados.includes(p));
+  if (pendientes.length === 0) {
+    estado.ronda++;
+    iniciarRonda();
+    return;
+  }
+  // ¿Hay ganador?
+  if (!estado.enemigos.some(e=>e.vivo)) { finPartida(true); return; }
+  if (!estado.aliados.some(a=>a.vivo)) { finPartida(false); return; }
+
+  seleccion = pendientes[0];
+  seleccion.buffs = null; // reset buffs al inicio de su turno
+  estado.usados.push(seleccion);
+  modoAccion = null;
+  hoverCell = -1;
+  log(`▶ Turno de ${seleccion.nombre} (vel ${seleccion.velocidad})`);
+  actualizarBotonera();
+}
+
+function marcarTurnoTerminado() {
+  seleccion = null;
+  modoAccion = null;
+  actualizarBotonera();
+  setTimeout(siguienteTurno, 250);
+}
+
+// ============================================================
+//  ACCIONES
+// ============================================================
+function accionMover() {
+  if (!seleccion) return;
+  modoAccion = 'mover';
+  actualizarBotonera();
+}
+
+function accionAtacar() {
+  if (!seleccion) return;
+  modoAccion = 'atacar';
+  actualizarBotonera();
+}
+
+function accionEsperar() {
+  log(`${seleccion.nombre} espera.`);
+  marcarTurnoTerminado();
+}
+
+function accionHabilidades() {
+  abrirSubmenu('Habilidades', seleccion.habilidades.map((h,i) => {
+    const coste = h.coste > seleccion.mp ? ' [SIN MANÁ]' : '';
+    return {
+      texto: `${h.nombre} (${h.coste} MP)${coste}`,
+      disabled: seleccion.mp < h.coste,
+      onClick: () => {
+        cerrarSubmenu();
+        modoAccion = 'habilidad';
+        modoAccionData = h;
+        actualizarBotonera();
+        log(`Usa ${h.nombre}: toca un objetivo.`);
+      }
+    };
+  }));
+}
+
+function accionItems() {
+  if (!seleccion.items.length) {
+    log('Sin objetos.');
+    return;
+  }
+  abrirSubmenu('Objetos', seleccion.items.map((it,i) => ({
+    texto: `${it.nombre} (x${it.usos})`,
+    onClick: () => {
+      cerrarSubmenu();
+      usarItem(i);
+    }
+  })));
+}
+
+function usarItem(idx) {
+  const it = seleccion.items[idx];
+  if (it.tipo === 'curacion') {
+    seleccion.hp = Math.min(seleccion.hp_max, seleccion.hp + it.valor);
+    log(`🧪 ${seleccion.nombre} usa ${it.nombre}: +${it.valor} HP`);
+    it.usos--;
+    if (it.usos <= 0) seleccion.items.splice(idx,1);
+    marcarTurnoTerminado();
+  }
+}
+
+// ============================================================
+//  CLICK EN CASILLA
+// ============================================================
+function cellFromEvent(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const px = (clientX - rect.left) / rect.width * W;
+  const py = (clientY - rect.top) / rect.height * H;
+  // Tablero: y de 90 a 140, casillas de ancho 32, desde x=32
+  const tabX0 = 32, tabX1 = 288;
+  const tabY0 = 90, tabY1 = 140;
+  if (py < tabY0 || py > tabY1) return -1;
+  if (px < tabX0 || px > tabX1) return -1;
+  return Math.floor((px - tabX0) / ((tabX1-tabX0)/8));
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const cell = cellFromEvent(e.clientX, e.clientY);
+  if (cell < 0) return;
+  onCellClick(cell);
+});
+
+function onCellClick(cell) {
+  if (!seleccion) return;
+  const ocupante = estado.tablero[cell];
+
+  // Si no estamos en modo acción, seleccionar/informar
+  if (!modoAccion) {
+    if (ocupante) log(`${ocupante.nombre}: HP ${ocupante.hp}/${ocupante.hp_max} · MP ${ocupante.mp}`);
+    return;
+  }
+
+  if (modoAccion === 'mover') {
+    if (Math.abs(cell - seleccion.pos) !== 1) {
+      log('Solo 1 casilla.');
+      return;
+    }
+    mover(seleccion, cell);
+    marcarTurnoTerminado();
+  }
+  else if (modoAccion === 'atacar') {
+    if (!ocupante) { log('Casilla vacía.'); return; }
+    if (ocupante.equipo === seleccion.equipo) { log('No atacar aliados.'); return; }
+    atacar(seleccion, ocupante);
+    marcarTurnoTerminado();
+  }
+  else if (modoAccion === 'habilidad') {
+    const h = modoAccionData;
+    if (h.tipo === 'buff') {
+      aplicarBuff(seleccion, h);
+      marcarTurnoTerminado();
+      return;
+    }
+    if (h.tipo === 'melee' || h.tipo === 'ranged' || h.tipo === 'ranged_aoe') {
+      if (!ocupante || ocupante.equipo === seleccion.equipo) { log('Elige un enemigo.'); return; }
+      usarHabilidad(seleccion, ocupante, h);
+      marcarTurnoTerminado();
+    }
+  }
+}
+
+// ============================================================
+//  MECÁNICAS
+// ============================================================
+function mover(p, destino) {
+  const otro = estado.tablero[destino];
+  const origen = p.pos;
+  estado.tablero[destino] = p;
+  p.pos = destino;
+  if (otro) {
+    estado.tablero[origen] = otro;
+    otro.pos = origen;
+    log(`${p.nombre} intercambia con ${otro.nombre}.`);
+  } else {
+    estado.tablero[origen] = null;
+    log(`${p.nombre} se mueve.`);
+  }
+}
+
+function atacar(atacante, objetivo) {
+  const dir = Math.sign(objetivo.pos - atacante.pos);
+  const dist = Math.abs(objetivo.pos - atacante.pos);
+
+  if (atacante.rango === 1) {
+    // Extensión por aliados adyacentes
+    let alcance = 1;
+    let pos = atacante.pos + dir;
+    while (estado.tablero[pos] && estado.tablero[pos].equipo === atacante.equipo && alcance < 8) {
+      alcance++;
+      pos += dir;
+    }
+    if (dist > alcance) { log(`Fuera de alcance (${alcance}).`); return; }
+    // Mover al atacante adyacente al objetivo
+    const destino = objetivo.pos - dir;
+    if (destino !== atacante.pos && destino >= 0 && destino < CELLS) {
+      const intermedio = estado.tablero[destino];
+      // Si está libre o es el propio atacante
+      if (!intermedio || intermedio === atacante) {
+        estado.tablero[atacante.pos] = null;
+        atacante.pos = destino;
+        estado.tablero[destino] = atacante;
+      }
+    }
+  } else {
+    if (dist > atacante.rango) { log(`Fuera de rango (${atacante.rango}).`); return; }
+  }
+
+  let dmg = atacante.atk + (Math.floor(Math.random()*3) - 1);
+  if (atacante.buffs?.atk) dmg += atacante.buffs.atk;
+  dmg = Math.max(1, dmg);
+  objetivo.hp = Math.max(0, objetivo.hp - dmg);
+  log(`⚔ ${atacante.nombre} → ${objetivo.nombre}: ${dmg} daño`);
+  animarGolpe(objetivo, dmg);
+
+  if (objetivo.hp <= 0) {
+    objetivo.vivo = false;
+    estado.tablero[objetivo.pos] = null;
+    log(`💀 ${objetivo.nombre} cae.`);
+  }
+}
+
+function usarHabilidad(atacante, objetivo, h) {
+  if (atacante.mp < h.coste) { log('Maná insuficiente.'); return; }
+  atacante.mp -= h.coste;
+
+  const dist = Math.abs(objetivo.pos - atacante.pos);
+  if (h.tipo === 'melee' && dist > 1) { log('Fuera de rango.'); atacante.mp += h.coste; return; }
+  if (h.tipo !== 'melee' && dist > h.rango) { log(`Fuera de rango (${h.rango}).`); atacante.mp += h.coste; return; }
+
+  let dmg = h.poder;
+  if (h.nombre === 'Apuñalar' && Math.random() < 0.4) { dmg *= 2; log('¡CRÍTICO!'); }
+  if (atacante.buffs?.atk) dmg += atacante.buffs.atk;
+
+  const aplicar = (t) => {
+    t.hp = Math.max(0, t.hp - dmg);
+    animarGolpe(t, dmg);
+    log(`✨ ${atacante.nombre} usa ${h.nombre} → ${t.nombre}: ${dmg}`);
+    if (t.hp <= 0) {
+      t.vivo = false;
+      estado.tablero[t.pos] = null;
+      log(`💀 ${t.nombre} cae.`);
+    }
+  };
+  aplicar(objetivo);
+
+  if (h.tipo === 'ranged_aoe') {
+    // Golpea también la casilla siguiente en la dirección
+    const dir = Math.sign(objetivo.pos - atacante.pos);
+    const extra = estado.tablero[objetivo.pos + dir];
+    if (extra && extra.equipo !== atacante.equipo && extra.vivo) aplicar(extra);
+  }
+}
+
+function aplicarBuff(p, h) {
+  if (p.mp < h.coste) { log('Maná insuficiente.'); return; }
+  p.mp -= h.coste;
+  if (h.nombre === 'Grito de Guerra') {
+    p.buffs = { atk: 3 };
+    log(`💪 ${p.nombre} usa ${h.nombre}: +3 ATK.`);
+  } else if (h.nombre === 'Sombra') {
+    p.buffs = { evasión: true };
+    log(`🌫 ${p.nombre} se funde en las sombras.`);
+  }
+}
+
+function finPartida(victoria) {
+  document.getElementById('end-title').textContent = victoria ? '¡VICTORIA!' : 'DERROTA';
+  document.getElementById('end-title').style.color = victoria ? '#ffcc66' : '#ff6666';
+  document.getElementById('end-msg').textContent = victoria
+    ? 'Has derrotado al equipo rojo.'
+    : 'Tu equipo ha caído.';
+  document.getElementById('end-screen').classList.add('active');
+}
+
+// ============================================================
+//  SUBMENÚS
+// ============================================================
+function abrirSubmenu(titulo, opciones) {
+  document.getElementById('submenu-title').textContent = titulo;
+  const list = document.getElementById('submenu-list');
+  list.innerHTML = '';
+  opciones.forEach(opt => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.textContent = opt.texto;
+    b.disabled = !!opt.disabled;
+    b.onclick = opt.onClick;
+    list.appendChild(b);
+  });
+  document.getElementById('submenu').classList.add('active');
+}
+function cerrarSubmenu() {
+  document.getElementById('submenu').classList.remove('active');
+}
+
+// ============================================================
+//  BOTONERA
+// ============================================================
+function actualizarBotonera() {
+  const cont = document.getElementById('hud-bottom');
+  cont.innerHTML = '';
+
+  if (!seleccion) {
+    document.getElementById('turn-info').textContent = 'Turno: —';
+    return;
+  }
+
+  document.getElementById('turn-info').innerHTML =
+    `${seleccion.nombre} · HP ${seleccion.hp}/${seleccion.hp_max} · MP ${seleccion.mp}`;
+
+  const vivos = estado.personajes.filter(p=>p.vivo).length;
+  document.getElementById('team-info').innerHTML =
+    `🔵 ${estado.aliados.filter(a=>a.vivo).length}/3  🔴 ${estado.enemigos.filter(e=>e.vivo).length}/3`;
+
+  // Si es turno enemigo, no mostramos botones (IA ejecuta tras delay)
+  if (seleccion.equipo === 1) {
+    setTimeout(iaTurno, 600);
+    return;
+  }
+
+  const bMover = mkBtn('Mover', accionMover, modoAccion === 'mover');
+  const bAtacar = mkBtn('Atacar', accionAtacar, modoAccion === 'atacar');
+  const bHab = mkBtn('Habilidad', accionHabilidades, false, 'mana');
+  const bItem = mkBtn('Objeto', accionItems, false, 'gold');
+  const bEsperar = mkBtn('Esperar', accionEsperar);
+
+  if (modoAccion) {
+    cont.appendChild(mkBtn('✕ Cancelar', () => { modoAccion = null; actualizarBotonera(); }, false, 'danger'));
+  } else {
+    cont.appendChild(bAtacar);
+    cont.appendChild(bMover);
+    cont.appendChild(bHab);
+    cont.appendChild(bItem);
+    cont.appendChild(bEsperar);
+  }
+}
+
+function mkBtn(text, fn, active, cls='') {
+  const b = document.createElement('button');
+  b.className = 'btn ' + cls;
+  b.textContent = text;
+  b.onclick = fn;
+  if (active) b.style.outline = '3px solid #ffff66';
+  return b;
+}
+
+// ============================================================
+//  IA ENEMIGA
+// ============================================================
+function iaTurno() {
+  if (!seleccion || seleccion.equipo !== 1) return;
+  const enemigos = estado.aliados.filter(a=>a.vivo);
+  if (!enemigos.length) { marcarTurnoTerminado(); return; }
+
+  // Enemigo más débil / más cercano
+  const objetivo = enemigos.sort((a,b)=>{
+    const da = Math.abs(a.pos - seleccion.pos);
+    const db = Math.abs(b.pos - seleccion.pos);
+    return da - db || a.hp - b.hp;
+  })[0];
+
+  const dist = Math.abs(objetivo.pos - seleccion.pos);
+
+  // 1. Intentar atacar/habilidad si está en rango
+  if (seleccion.habilidades.length && seleccion.mp >= seleccion.habilidades[0].coste) {
+    const h = seleccion.habilidades[0];
+    let canHit = false;
+    if (h.tipo === 'melee') {
+      // Contar alcance con aliados extendidos
+      const dir = Math.sign(objetivo.pos - seleccion.pos);
+      let alcance = 1;
+      let pos = seleccion.pos + dir;
+      while (estado.tablero[pos] && estado.tablero[pos].equipo === seleccion.equipo) { alcance++; pos += dir; }
+      canHit = dist <= alcance;
+    } else if (h.tipo === 'ranged' || h.tipo === 'ranged_aoe') {
+      canHit = dist <= h.rango;
+    }
+    if (canHit) {
+      if (h.tipo === 'melee' || h.tipo === 'ranged' || h.tipo === 'ranged_aoe') {
+        usarHabilidad(seleccion, objetivo, h);
+        marcarTurnoTerminado();
+        return;
+      }
+    }
+  }
+
+  // 2. Ataque normal si está en rango
+  if (dist <= seleccion.rango) {
+    atacar(seleccion, objetivo);
+    marcarTurnoTerminado();
+    return;
+  }
+
+  // 3. Mover hacia el objetivo
+  const dir = Math.sign(objetivo.pos - seleccion.pos);
+  const nuevaPos = seleccion.pos + dir;
+  if (nuevaPos >= 0 && nuevaPos < CELLS) {
+    mover(seleccion, nuevaPos);
+    // Tras moverse, intentar atacar si está en rango
+    const nuevaDist = Math.abs(objetivo.pos - seleccion.pos);
+    if (nuevaDist <= seleccion.rango) {
+      setTimeout(() => { atacar(seleccion, objetivo); marcarTurnoTerminado(); }, 300);
+      return;
+    }
+  }
+  marcarTurnoTerminado();
+}
+
+// ============================================================
+//  LOG
+// ============================================================
+function log(msg) {
+  estado.log.push(msg);
+  if (estado.log.length > 6) estado.log.shift();
+  renderLog();
+}
+function renderLog() {
+  const el = document.getElementById('log');
+  el.innerHTML = estado.log.map(l => `<div>${l}</div>`).join('');
+}
+
+// ============================================================
+//  ANIMACIONES
+// ============================================================
+function animarGolpe(target, dmg) {
+  anims.push({ tipo:'hit', pos: target.pos, t:0, dur: 20, dmg });
+}
+
+// ============================================================
+//  DIBUJO
+// ============================================================
+function dibujarFondo() {
+  // Cielo con gradiente pixelado
+  for (let y = 0; y < H; y += 4) {
+    const t = y / H;
+    const r = Math.floor(20 + t*15);
+    const g = Math.floor(20 + t*20);
+    const b = Math.floor(40 + t*35);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, y, W, 4);
+  }
+  // Estrellas
+  for (let i = 0; i < 20; i++) {
+    const x = (i * 137 + 23) % W;
+    const y = (i * 71 + 11) % 60;
+    ctx.fillStyle = i % 3 === 0 ? '#ffffaa' : '#8888cc';
+    ctx.fillRect(x, y, 1, 1);
+  }
+  // Suelo con perspectiva (filas con más brillo)
+  const tabY = 90, tabH = 50;
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = ['#2a2a44','#22223a','#1a1a2e'][i];
+    ctx.fillRect(0, tabY + tabH + i*10, W, 10);
+  }
+}
+
+function dibujarTablero() {
+  const tabX0 = 32, tabX1 = 288;
+  const tabY0 = 90, tabY1 = 140;
+  const cw = (tabX1 - tabX0) / CELLS;
+
+  for (let i = 0; i < CELLS; i++) {
+    const x = tabX0 + i*cw;
+    const isSel = seleccion && seleccion.pos === i;
+    const isHover = hoverCell === i;
+    const isMove = modoAccion === 'mover' && seleccion && Math.abs(i - seleccion.pos) === 1;
+    const isAtk = modoAccion === 'atacar' && seleccion && i !== seleccion.pos;
+
+    // Casilla base
+    let color = (i % 2 === 0) ? PAL.floor1 : PAL.floor2;
+    if (isMove) color = '#3a5a3a';
+    if (isAtk) color = '#5a3a3a';
+    if (isHover) color = '#4a4a7a';
+
+    // Marco 3D pixel
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x, tabY0, cw, tabY1-tabY0);
+    ctx.fillStyle = color;
+    ctx.fillRect(x+1, tabY0+1, cw-2, tabY1-tabY0-2);
+
+    // Línea superior brillante
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(x+1, tabY0+1, cw-2, 2);
+
+    // Borde inferior
+    ctx.fillStyle = '#0a0a15';
+    ctx.fillRect(x+1, tabY1-3, cw-2, 2);
+
+    // Resaltar selección
+    if (isSel) {
+      const pulso = 0.5 + 0.5*Math.sin(Date.now()/200);
+      ctx.strokeStyle = `rgba(255,255,100,${pulso})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x+1, tabY0+1, cw-2, tabY1-tabY0-2);
+    }
+  }
+}
+
+function dibujarPersonaje(p) {
+  if (!p.vivo) return;
+  const tabX0 = 32, tabY0 = 90, tabY1 = 140;
+  const cw = 32;
+  const x = tabX0 + p.pos * cw;
+  const yBase = tabY1 - 8;
+
+  const sprite = SPRITES[p.tipo];
+  const t = Date.now() / 300;
+  const bob = Math.sin(t + p.pos) * 0.5;
+
+  // Sombra
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(x + 16, yBase + 2, 10, 3, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Colores según equipo
+  const isAlly = p.equipo === 0;
+  const mainColor = isAlly ? PAL.ally : PAL.enemy;
+  const darkColor = isAlly ? PAL.allyDark : PAL.enemyDark;
+
+  // Dibujamos el personaje pixel a pixel (16x16 escalado a ~16x16)
+  const cx = Math.floor(x + 8);
+  const cy = Math.floor(yBase - 24 + bob);
+
+  // Cuerpo (rectángulo con borde)
+  ctx.fillStyle = '#000';
+  ctx.fillRect(cx+2, cy+8, 12, 14);
+  ctx.fillStyle = mainColor;
+  ctx.fillRect(cx+3, cy+9, 10, 12);
+  ctx.fillStyle = darkColor;
+  ctx.fillRect(cx+3, cy+15, 10, 6);
+
+  // Cabeza
+  ctx.fillStyle = '#000';
+  ctx.fillRect(cx+4, cy, 8, 9);
+  ctx.fillStyle = sprite.skin;
+  ctx.fillRect(cx+5, cy+1, 6, 7);
+
+  // Pelo / casco
+  ctx.fillStyle = darkColor;
+  ctx.fillRect(cx+5, cy, 6, 3);
+
+  // Ojos según equipo
+  ctx.fillStyle = '#000';
+  ctx.fillRect(cx+6, cy+4, 1, 2);
+  ctx.fillRect(cx+9, cy+4, 1, 2);
+
+  // Detalles por clase
+  if (p.tipo === 'guerrero') {
+    // Espada
+    ctx.fillStyle = '#cccccc';
+    ctx.fillRect(cx+14, cy+8, 2, 10);
+    ctx.fillStyle = '#888888';
+    ctx.fillRect(cx+14, cy+17, 2, 3);
+    // Escudo
+    ctx.fillStyle = '#aa8844';
+    ctx.fillRect(cx, cy+10, 4, 8);
+    ctx.fillStyle = '#886622';
+    ctx.fillRect(cx+1, cy+11, 2, 6);
+    // Casco
+    ctx.fillStyle = mainColor;
+    ctx.fillRect(cx+4, cy-1, 8, 2);
+  } else if (p.tipo === 'arquero') {
+    // Arco
+    ctx.strokeStyle = '#aa8844';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx+14, cy+13, 5, -Math.PI/2, Math.PI/2);
+    ctx.stroke();
+    // Cuerda
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(cx+14, cy+8);
+    ctx.lineTo(cx+14, cy+18);
+    ctx.stroke();
+    // Capucha
+    ctx.fillStyle = mainColor;
+    ctx.fillRect(cx+4, cy-1, 8, 3);
+  } else if (p.tipo === 'ladron') {
+    // Daga
+    ctx.fillStyle = '#dddddd';
+    ctx.fillRect(cx+14, cy+11, 2, 5);
+    ctx.fillStyle = '#888888';
+    ctx.fillRect(cx+14, cy+16, 2, 2);
+    // Capucha
+    ctx.fillStyle = darkColor;
+    ctx.fillRect(cx+4, cy-1, 8, 3);
+    // Bufanda
+    ctx.fillStyle = mainColor;
+    ctx.fillRect(cx+4, cy+7, 8, 2);
+  }
+
+  // Barra HP
+  const barW = 16, barH = 2;
+  const bx = x + 8, by = yBase + 4;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(bx-1, by-1, barW+2, barH+2);
+  ctx.fillStyle = '#400';
+  ctx.fillRect(bx, by, barW, barH);
+  const hpPct = p.hp / p.hp_max;
+  ctx.fillStyle = hpPct > 0.4 ? PAL.hp : PAL.hpLow;
+  ctx.fillRect(bx, by, Math.ceil(barW * hpPct), barH);
+
+  // Barra MP
+  const mby = by + 3;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(bx-1, mby-1, barW+2, 2);
+  ctx.fillStyle = '#004';
+  ctx.fillRect(bx, mby, barW, 1);
+  ctx.fillStyle = PAL.mp;
+  ctx.fillRect(bx, mby, Math.ceil(barW * (p.mp/p.mp_max)), 1);
+
+  // Nombre (mini)
+  ctx.fillStyle = '#fff';
+  ctx.font = '4px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(p.nombre.substring(0,3), x+16, by + 9);
+  ctx.textAlign = 'left';
+
+  // Indicador de turno (flecha)
+  if (seleccion === p) {
+    const t2 = Date.now()/200;
+    const fy = cy - 6 + Math.sin(t2)*2;
+    ctx.fillStyle = PAL.sel;
+    ctx.beginPath();
+    ctx.moveTo(x+16, fy);
+    ctx.lineTo(x+12, fy+4);
+    ctx.lineTo(x+20, fy+4);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Buff visual
+  if (p.buffs?.atk) {
+    ctx.fillStyle = 'rgba(255,200,0,0.3)';
+    ctx.fillRect(cx, cy, 16, 22);
+  }
+  if (p.buffs?.evasión) {
+    ctx.fillStyle = 'rgba(100,100,200,0.3)';
+    ctx.fillRect(cx, cy, 16, 22);
+  }
+}
+
+function dibujarAnims() {
+  for (let i = anims.length - 1; i >= 0; i--) {
+    const a = anims[i];
+    a.t++;
+    if (a.t > a.dur) { anims.splice(i,1); continue; }
+
+    if (a.tipo === 'hit') {
+      const tabX0 = 32, tabY0 = 90, tabY1 = 140;
+      const cw = 32;
+      const x = tabX0 + a.pos * cw + 16;
+      const y = tabY0 + 20;
+      const progreso = a.t / a.dur;
+      // Flash blanco
+      if (a.t < 5) {
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillRect(tabX0 + a.pos*cw, tabY0, cw, tabY1-tabY0);
+      }
+      // Número de daño subiendo
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#000';
+      ctx.fillText(`-${a.dmg}`, x+1, y - progreso*15 + 1);
+      ctx.fillStyle = '#ff6666';
+      ctx.fillText(`-${a.dmg}`, x, y - progreso*15);
+      ctx.textAlign = 'left';
+    }
+  }
+}
+
+function dibujarHUDCanvas() {
+  // Panel superior con ronda
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(2, 2, 80, 14);
+  ctx.strokeStyle = '#4444aa';
+  ctx.strokeRect(2, 2, 80, 14);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 7px monospace';
+  ctx.fillText(`RONDA ${estado.ronda}`, 8, 11);
+
+  // Título
+  ctx.fillStyle = '#ffcc66';
+  ctx.font = 'bold 9px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PIXEL TACTICS', W/2, 12);
+  ctx.textAlign = 'left';
+}
+
+// ============================================================
+//  LOOP PRINCIPAL
+// ============================================================
+function loop() {
+  dibujarFondo();
+  dibujarTablero();
+  // Dibujar personajes (primero los que no son selección para que el seleccionado quede encima)
+  const pjs = estado.personajes.slice().sort((a,b)=>{
+    if (a === seleccion) return 1;
+    if (b === seleccion) return -1;
+    return a.pos - b.pos;
+  });
+  for (const p of pjs) dibujarPersonaje(p);
+  dibujarAnims();
+  dibujarHUDCanvas();
+  requestAnimationFrame(loop);
+}
+
+// Detectar hover con mouse
+canvas.addEventListener('pointermove', (e) => {
+  hoverCell = cellFromEvent(e.clientX, e.clientY);
+});
+
+// ============================================================
+//  ARRANQUE
+// ============================================================
+nuevaPartida();
+actualizarBotonera();
+loop();
+</script>
+</body>
+</html>
